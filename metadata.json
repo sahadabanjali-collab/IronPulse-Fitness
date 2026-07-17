@@ -1,0 +1,6 @@
+{
+  "name": "IronPulse Fitness",
+  "description": "Modern, premium gym website for IronPulse Fitness - Stronger Every Day. Better for Life.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
