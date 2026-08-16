@@ -299,3 +299,15 @@ export const FAQS: FAQItem[] = [
     answer: "All our 25+ coaches hold national or international certifications (such as ACSM, NASM, ACE, or gold-standard fitness degrees). The Premium plan includes 2 trainer sessions per month, while the Elite plan provides dedicated 1-on-1 personal training twice a week."
   }
 ];
+
+export const CONTACT_INFO = {
+  phone: "+91 98765 43210",
+  whatsappNumber: "919876543210", // Clean digits for WhatsApp link
+  whatsappMessage: "Hi IronPulse Fitness! I would like to enquire about gym memberships and training programs.",
+  email: "info@ironpulse.com",
+  address: "12, Outer Ring Rd, Sector 4, HSR Layout, Bengaluru, Karnataka 560102",
+  hours: {
+    weekdays: "5:00 AM - 11:00 PM",
+    sunday: "6:00 AM - 8:00 PM",
+  }
+};

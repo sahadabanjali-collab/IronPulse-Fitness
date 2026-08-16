@@ -1,6 +1,7 @@
 import { useState, useEffect, ChangeEvent, FormEvent } from "react";
-import { X, CheckCircle, CreditCard, ShieldCheck, Ticket, Calendar } from "lucide-react";
+import { X, CheckCircle, Wallet, ShieldCheck, Ticket, Calendar } from "lucide-react";
 import { MembershipPlan } from "../data";
+import { saveMembership } from "../lib/supabase";
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -21,13 +22,54 @@ export default function CheckoutModal({
     name: "",
     email: "",
     phone: "",
-    cardNumber: "",
-    cardExpiry: "",
-    cardCvc: "",
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [paymentId, setPaymentId] = useState("");
+  const [razorpayLoaded, setRazorpayLoaded] = useState(false);
+  const [supabaseStatus, setSupabaseStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [supabaseErrorMessage, setSupabaseErrorMessage] = useState("");
+
+  const performSupabaseSave = async (payId: string) => {
+    setSupabaseStatus("saving");
+    try {
+      await saveMembership({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone || "",
+        plan_name: isTrialOnly ? "3-Day Free Trial" : (selectedPlan?.name || ""),
+        price: isTrialOnly ? "₹0.00" : getModalPrice(),
+        billing_cycle: isTrialOnly ? "Trial" : (isAnnual ? "Annual" : "Monthly"),
+        payment_id: payId,
+        is_trial: isTrialOnly || false,
+      });
+      setSupabaseStatus("saved");
+    } catch (err: any) {
+      console.error("Supabase Save failed:", err);
+      setSupabaseStatus("error");
+      setSupabaseErrorMessage(err?.message || "Failed to save details to Supabase. Check your connection or table schema.");
+    }
+  };
+
+  // Dynamic injection of Razorpay SDK
+  useEffect(() => {
+    if (typeof (window as any).Razorpay !== "undefined") {
+      setRazorpayLoaded(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => setRazorpayLoaded(true);
+    script.onerror = () => console.error("Razorpay SDK failed to load.");
+    document.body.appendChild(script);
+    return () => {
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+    };
+  }, []);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -36,12 +78,12 @@ export default function CheckoutModal({
         name: "",
         email: "",
         phone: "",
-        cardNumber: "",
-        cardExpiry: "",
-        cardCvc: "",
       });
       setIsSuccess(false);
       setIsSubmitting(false);
+      setPaymentId("");
+      setSupabaseStatus("idle");
+      setSupabaseErrorMessage("");
     }
   }, [isOpen]);
 
@@ -50,17 +92,6 @@ export default function CheckoutModal({
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleCheckoutSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    // Simulate Payment Gateway or Registration process
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setIsSuccess(true);
-    }, 1500);
   };
 
   // Compute actual price
@@ -76,6 +107,133 @@ export default function CheckoutModal({
       return `₹${discountedMonthly.toLocaleString()}`;
     }
     return selectedPlan.price;
+  };
+
+  const getNumericPrice = () => {
+    if (isTrialOnly || !selectedPlan) return 0;
+    const priceStr = getModalPrice();
+    const cleaned = priceStr.replace("₹", "").replace(/,/g, "");
+    return parseInt(cleaned, 10) || 0;
+  };
+
+  const handleCheckoutSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    
+    if (isTrialOnly) {
+      setIsSubmitting(true);
+      const trialId = "trial_" + Math.random().toString(36).substring(7);
+      setPaymentId(trialId);
+      performSupabaseSave(trialId).finally(() => {
+        setIsSubmitting(false);
+        setIsSuccess(true);
+      });
+      return;
+    }
+
+    if (!razorpayLoaded) {
+      alert("Razorpay payment gateway is still loading. Please check your internet connection.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const numericAmount = getNumericPrice();
+    const amountInPaise = numericAmount * 100;
+
+    if (amountInPaise < 100) {
+      alert("Amount must be at least ₹1 (100 paise).");
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      // Step 1: Create Order on Backend
+      const orderRes = await fetch("/api/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: amountInPaise,
+          currency: "INR",
+          receipt: `rcpt_${Date.now()}`,
+        }),
+      });
+
+      const orderData = await orderRes.json();
+
+      if (!orderRes.ok || !orderData.order_id) {
+        throw new Error(orderData.error || "Failed to create Razorpay order.");
+      }
+
+      // Step 2: Open Razorpay Standard Checkout Modal
+      const options = {
+        key: orderData.key_id || (import.meta as any).env.VITE_RAZORPAY_KEY_ID || "rzp_test_TGc3IW2596kQAH",
+        amount: orderData.amount,
+        currency: orderData.currency || "INR",
+        name: "IronPulse Fitness",
+        description: `${selectedPlan?.name} Membership`,
+        order_id: orderData.order_id,
+        image: "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&q=80&w=200",
+        handler: async function (response: any) {
+          // Step 3: Send payment verification details to Backend
+          try {
+            const verifyRes = await fetch("/api/verify-payment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+
+            const verifyData = await verifyRes.json();
+
+            if (verifyRes.ok && verifyData.success) {
+              setPaymentId(response.razorpay_payment_id);
+              setIsSuccess(true);
+              performSupabaseSave(response.razorpay_payment_id);
+            } else {
+              alert(`Payment verification failed: ${verifyData.error || "Signature mismatch"}`);
+            }
+          } catch (vErr: any) {
+            console.error("Verification error:", vErr);
+            alert("Payment signature verification failed. Please contact support.");
+          } finally {
+            setIsSubmitting(false);
+          }
+        },
+        prefill: {
+          name: formData.name,
+          email: formData.email,
+          contact: formData.phone,
+        },
+        notes: {
+          plan: selectedPlan?.name || "",
+          billing: isAnnual ? "Annual" : "Monthly",
+        },
+        theme: {
+          color: "#dc2626", // IronPulse Red
+        },
+        modal: {
+          ondismiss: function () {
+            setIsSubmitting(false);
+          },
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+
+      rzp.on("payment.failed", function (response: any) {
+        console.error("Payment failed:", response.error);
+        alert(`Payment Failed: ${response.error?.description || response.error?.reason || "Transaction declined."}`);
+        setIsSubmitting(false);
+      });
+
+      rzp.open();
+    } catch (err: any) {
+      console.error("Order creation or initialization error:", err);
+      alert(`Error initializing payment: ${err.message || "Failed to reach order backend."}`);
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -143,6 +301,37 @@ export default function CheckoutModal({
                     {isTrialOnly ? "₹0.00" : `${getModalPrice()} / month`}
                   </span>
                 </div>
+                {paymentId && (
+                  <div className="flex justify-between border-t border-zinc-800/60 pt-3">
+                    <span className="text-zinc-500">Payment ID</span>
+                    <span className="text-emerald-400 font-mono font-bold text-[10px] tracking-wide select-all">
+                      {paymentId}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-zinc-800/60 pt-3">
+                  <span className="text-zinc-500">Supabase Sync</span>
+                  <span>
+                    {supabaseStatus === "saving" && (
+                      <span className="text-yellow-500 font-medium animate-pulse">Syncing...</span>
+                    )}
+                    {supabaseStatus === "saved" && (
+                      <span className="text-emerald-500 font-bold">✓ Saved</span>
+                    )}
+                    {supabaseStatus === "error" && (
+                      <span className="text-rose-500 font-medium">✗ Failed</span>
+                    )}
+                  </span>
+                </div>
+                {supabaseStatus === "error" && (
+                  <div className="text-[10px] text-zinc-400 bg-red-950/20 border border-red-900/30 p-2.5 rounded-xl space-y-1 mt-2">
+                    <p className="text-red-400 font-semibold">Supabase sync error:</p>
+                    <p className="leading-normal">{supabaseErrorMessage}</p>
+                    <p className="text-zinc-500 leading-normal pt-1 font-mono text-[9px]">
+                      Ensure you ran the table creation SQL script in your Supabase SQL Editor.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <p className="text-[11px] text-zinc-500 max-w-xs mx-auto">
@@ -257,62 +446,27 @@ export default function CheckoutModal({
               {!isTrialOnly && (
                 <div className="space-y-4 pt-2">
                   <h5 className="text-xs font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800 pb-1.5 flex items-center gap-1.5">
-                    <CreditCard className="h-4 w-4 text-red-500" />
-                    <span>2. Card Details (Mock Billing)</span>
+                    <Wallet className="h-4 w-4 text-red-500" />
+                    <span>2. Razorpay Secure Payment</span>
                   </h5>
 
-                  {/* Card Number */}
-                  <div className="space-y-1">
-                    <label htmlFor="modal-card" className="block text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">
-                      Card Number
-                    </label>
-                    <input
-                      id="modal-card"
-                      type="text"
-                      name="cardNumber"
-                      value={formData.cardNumber}
-                      onChange={handleChange}
-                      placeholder="4111 2222 3333 4444"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-red-600"
-                      required
-                      pattern="[0-9 ]{16,19}"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Expiry */}
-                    <div className="space-y-1">
-                      <label htmlFor="modal-expiry" className="block text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">
-                        Expiry Date
-                      </label>
-                      <input
-                        id="modal-expiry"
-                        type="text"
-                        name="cardExpiry"
-                        value={formData.cardExpiry}
-                        onChange={handleChange}
-                        placeholder="MM/YY"
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-red-600"
-                        required
-                        maxLength={5}
-                      />
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Gateway Provider</span>
+                      <span className="text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 px-2 py-0.5 rounded-full">
+                        Razorpay Verified
+                      </span>
                     </div>
-                    {/* CVC */}
-                    <div className="space-y-1">
-                      <label htmlFor="modal-cvc" className="block text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">
-                        CVC Security
-                      </label>
-                      <input
-                        id="modal-cvc"
-                        type="password"
-                        name="cardCvc"
-                        value={formData.cardCvc}
-                        onChange={handleChange}
-                        placeholder="•••"
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-red-600"
-                        required
-                        maxLength={3}
-                      />
+                    
+                    <p className="text-zinc-400 text-[11px] leading-relaxed">
+                      You will pay securely using Razorpay. Supports <strong className="text-white">UPI, GPay, PhonePe, NetBanking, Credit/Debit Cards, and Wallets</strong>.
+                    </p>
+
+                    <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-zinc-900">
+                      <span className="text-[9px] bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-zinc-400 font-medium">UPI / GPay</span>
+                      <span className="text-[9px] bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-zinc-400 font-medium">NetBanking</span>
+                      <span className="text-[9px] bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-zinc-400 font-medium">Cards</span>
+                      <span className="text-[9px] bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-zinc-400 font-medium">Wallets</span>
                     </div>
                   </div>
                 </div>
@@ -321,7 +475,7 @@ export default function CheckoutModal({
               {/* Secure Info Footer */}
               <div className="flex items-center gap-2 text-[10px] text-zinc-500 justify-center">
                 <ShieldCheck className="h-4 w-4 text-red-500" />
-                <span>256-Bit SSL Encrypted Connection. Cancel or freeze anytime with 1 click.</span>
+                <span>256-Bit SSL Encrypted Connection. Securely processed by Razorpay.</span>
               </div>
 
               {/* Submit CTA */}
@@ -334,7 +488,7 @@ export default function CheckoutModal({
                   <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 ) : (
                   <span>
-                    {isTrialOnly ? "Claim Free 3-Day Pass" : `Confirm Membership Order`}
+                    {isTrialOnly ? "Claim Free 3-Day Pass" : `Pay with Razorpay`}
                   </span>
                 )}
               </button>

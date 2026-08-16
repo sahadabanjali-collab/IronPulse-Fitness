@@ -13,6 +13,7 @@ import FAQSection from "./components/FAQSection";
 import ContactSection from "./components/ContactSection";
 import Footer from "./components/Footer";
 import ScrollToTop from "./components/ScrollToTop";
+import WhatsAppButton from "./components/WhatsAppButton";
 import CheckoutModal from "./components/CheckoutModal";
 import { MEMBERSHIP_PLANS, MembershipPlan } from "./data";
 
@@ -112,7 +113,10 @@ export default function App() {
       {/* 14. Responsive Scroll Back Button */}
       <ScrollToTop />
 
-      {/* 15. Secured Mock Billing / Registration Dialog */}
+      {/* 15. Official Floating WhatsApp Direct Connect */}
+      <WhatsAppButton />
+
+      {/* 16. Secured Mock Billing / Registration Dialog */}
       <CheckoutModal
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}

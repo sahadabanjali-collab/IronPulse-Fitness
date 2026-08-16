@@ -1,5 +1,7 @@
 import { useState, useEffect, ChangeEvent, FormEvent } from "react";
-import { Phone, Mail, MapPin, Clock, Send, CheckCircle2 } from "lucide-react";
+import { Phone, Mail, MapPin, Clock, Send, CheckCircle2, MessageSquare } from "lucide-react";
+import { saveContactInquiry } from "../lib/supabase";
+import { CONTACT_INFO } from "../data";
 
 interface ContactSectionProps {
   selectedProgram: string;
@@ -17,6 +19,8 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [supabaseStatus, setSupabaseStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [supabaseErrorMessage, setSupabaseErrorMessage] = useState("");
 
   useEffect(() => {
     if (selectedProgram) {
@@ -29,13 +33,22 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setSupabaseStatus("saving");
+    setSupabaseErrorMessage("");
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      await saveContactInquiry({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        program: formData.program,
+        message: formData.message,
+      });
+
+      setSupabaseStatus("saved");
       setShowSuccess(true);
       setFormData({
         name: "",
@@ -46,11 +59,17 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
       });
       onClearProgram();
 
-      // Clear success notification after 5 seconds
+      // Clear success notification after 10 seconds
       setTimeout(() => {
         setShowSuccess(false);
-      }, 5000);
-    }, 1500);
+      }, 10000);
+    } catch (err: any) {
+      console.error("Failed to save to Supabase:", err);
+      setSupabaseStatus("error");
+      setSupabaseErrorMessage(err?.message || "Failed to sync submission to Supabase.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -87,16 +106,29 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
               <h3 className="font-display text-xl font-bold text-white tracking-tight">Contact Information</h3>
               
               <div className="space-y-6">
-                {/* Phone */}
+                {/* Phone & WhatsApp */}
                 <div className="flex items-start gap-4">
                   <div className="p-3 bg-red-600/10 border border-red-500/20 text-red-500 rounded-2xl">
                     <Phone className="h-5 w-5" />
                   </div>
-                  <div>
-                    <p className="text-xs text-zinc-500 uppercase tracking-wider font-bold">Call Admissions</p>
-                    <a href="tel:+919876543210" className="text-sm sm:text-base text-zinc-200 hover:text-white font-semibold transition-colors mt-0.5 block">
-                      +91 98765 43210
-                    </a>
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-zinc-500 uppercase tracking-wider font-bold">Call / WhatsApp Admissions</p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <a href={`tel:${CONTACT_INFO.phone.replace(/\s+/g, '')}`} className="text-sm sm:text-base text-zinc-200 hover:text-white font-semibold transition-colors block">
+                        {CONTACT_INFO.phone}
+                      </a>
+                      <a
+                        href={`https://wa.me/${CONTACT_INFO.whatsappNumber}?text=${encodeURIComponent(CONTACT_INFO.whatsappMessage)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#25D366]/15 hover:bg-[#25D366]/25 border border-[#25D366]/40 text-[#25D366] text-xs font-bold rounded-lg transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5 fill-[#25D366]" viewBox="0 0 24 24">
+                          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+                        </svg>
+                        <span>Chat</span>
+                      </a>
+                    </div>
                   </div>
                 </div>
 
@@ -107,8 +139,8 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
                   </div>
                   <div>
                     <p className="text-xs text-zinc-500 uppercase tracking-wider font-bold">General Enquiries</p>
-                    <a href="mailto:info@ironpulse.com" className="text-sm sm:text-base text-zinc-200 hover:text-white font-semibold transition-colors mt-0.5 block">
-                      info@ironpulse.com
+                    <a href={`mailto:${CONTACT_INFO.email}`} className="text-sm sm:text-base text-zinc-200 hover:text-white font-semibold transition-colors mt-0.5 block">
+                      {CONTACT_INFO.email}
                     </a>
                   </div>
                 </div>
@@ -121,7 +153,7 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
                   <div>
                     <p className="text-xs text-zinc-500 uppercase tracking-wider font-bold">Our Location</p>
                     <p className="text-sm text-zinc-300 font-medium leading-relaxed mt-0.5">
-                      12, Outer Ring Rd, Sector 4, HSR Layout, Bengaluru, Karnataka 560102
+                      {CONTACT_INFO.address}
                     </p>
                   </div>
                 </div>
@@ -136,11 +168,11 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
                     <div className="text-xs sm:text-sm text-zinc-300 font-medium space-y-0.5">
                       <p className="flex justify-between gap-6">
                         <span className="text-zinc-500">Mon - Sat:</span>
-                        <span className="text-zinc-200">5:00 AM - 11:00 PM</span>
+                        <span className="text-zinc-200">{CONTACT_INFO.hours.weekdays}</span>
                       </p>
                       <p className="flex justify-between gap-6">
                         <span className="text-zinc-500">Sunday:</span>
-                        <span className="text-zinc-200">6:00 AM - 8:00 PM</span>
+                        <span className="text-zinc-200">{CONTACT_INFO.hours.sunday}</span>
                       </p>
                     </div>
                   </div>
@@ -176,11 +208,37 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
               {showSuccess && (
                 <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-start gap-3.5 animate-fadeIn">
                   <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500 mt-0.5" />
-                  <div>
-                    <p className="font-bold text-sm">Application Sent Successfully!</p>
-                    <p className="text-xs text-zinc-400 mt-0.5">
-                      Thank you for choosing IronPulse. One of our admissions counselors will reach out to you via call or email within the next 2 hours.
+                  <div className="space-y-1">
+                    <p className="font-bold text-sm">Inquiry Sent & Synced to Supabase!</p>
+                    <p className="text-xs text-zinc-400">
+                      Thank you for choosing IronPulse. Your details have been securely recorded in the Supabase backend. One of our admissions counselors will reach out to you within the next 2 hours.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {supabaseStatus === "error" && (
+                <div className="p-4 bg-red-500/10 border border-red-500/20 text-rose-400 rounded-2xl flex flex-col gap-2 animate-fadeIn">
+                  <div className="flex items-start gap-3">
+                    <span className="h-5 w-5 shrink-0 text-rose-500 font-bold text-lg leading-none">✗</span>
+                    <div>
+                      <p className="font-bold text-sm">Supabase Storage Error</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">{supabaseErrorMessage}</p>
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-zinc-500 pl-8 space-y-1">
+                    <p>Make sure you have run the table creation script in your Supabase SQL Editor:</p>
+                    <pre className="bg-zinc-950 p-2 rounded-lg font-mono text-[9px] text-zinc-400 overflow-x-auto select-all leading-normal whitespace-pre">
+{`CREATE TABLE contact_inquiries (
+  id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  name TEXT,
+  email TEXT,
+  phone TEXT,
+  program TEXT,
+  message TEXT
+);`}
+                    </pre>
                   </div>
                 </div>
               )}
