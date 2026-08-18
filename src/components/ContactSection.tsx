@@ -1,11 +1,19 @@
 import { useState, useEffect, ChangeEvent, FormEvent } from "react";
-import { Phone, Mail, MapPin, Clock, Send, CheckCircle2, MessageSquare } from "lucide-react";
+import { Phone, Mail, MapPin, Clock, Send, CheckCircle2, AlertCircle } from "lucide-react";
+import { sendContactToN8n } from "../config/n8n";
 import { saveContactInquiry } from "../lib/supabase";
 import { CONTACT_INFO } from "../data";
 
 interface ContactSectionProps {
   selectedProgram: string;
   onClearProgram: () => void;
+}
+
+interface FormErrors {
+  name?: string;
+  email?: string;
+  phone?: string;
+  message?: string;
 }
 
 export default function ContactSection({ selectedProgram, onClearProgram }: ContactSectionProps) {
@@ -17,10 +25,10 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
     message: "",
   });
 
+  const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [supabaseStatus, setSupabaseStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [supabaseErrorMessage, setSupabaseErrorMessage] = useState("");
+  const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     if (selectedProgram) {
@@ -28,28 +36,113 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
     }
   }, [selectedProgram]);
 
+  const validateField = (name: string, value: string): string => {
+    switch (name) {
+      case "name":
+        if (!value.trim()) return "Full name is required.";
+        if (value.trim().length < 2) return "Name must be at least 2 characters long.";
+        return "";
+      case "email":
+        if (!value.trim()) return "Email address is required.";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+          return "Please enter a valid email address (e.g. name@example.com).";
+        }
+        return "";
+      case "phone":
+        if (!value.trim()) return "Phone number is required.";
+        const digitsOnly = value.replace(/\D/g, "");
+        if (digitsOnly.length < 10) {
+          return "Please enter a valid 10-digit phone number.";
+        }
+        return "";
+      case "message":
+        if (!value.trim()) return "Message cannot be empty.";
+        return "";
+      default:
+        return "";
+    }
+  };
+
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+
+    // Clear validation error when user types
+    if (errors[name as keyof FormErrors]) {
+      setErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
+
+    if (submitStatus === "error") {
+      setSubmitStatus("idle");
+    }
+  };
+
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
+    const nameErr = validateField("name", formData.name);
+    if (nameErr) newErrors.name = nameErr;
+
+    const emailErr = validateField("email", formData.email);
+    if (emailErr) newErrors.email = emailErr;
+
+    const phoneErr = validateField("phone", formData.phone);
+    if (phoneErr) newErrors.phone = phoneErr;
+
+    const msgErr = validateField("message", formData.message);
+    if (msgErr) newErrors.message = msgErr;
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    if (isSubmitting) return;
+
+    if (!validateForm()) {
+      return;
+    }
+
     setIsSubmitting(true);
-    setSupabaseStatus("saving");
-    setSupabaseErrorMessage("");
+    setSubmitStatus("idle");
+    setErrorMessage("");
+
+    const now = new Date();
+    const formattedDate = now.toLocaleString("en-US", {
+      dateStyle: "full",
+      timeStyle: "medium",
+    });
+
+    const payload = {
+      name: formData.name.trim(),
+      phone: formData.phone.trim(),
+      email: formData.email.trim(),
+      subject: formData.program || "General Fitness Enquiry",
+      message: formData.message.trim(),
+      source: "IronPulse Fitness Website",
+      submittedAt: formattedDate,
+    };
 
     try {
-      await saveContactInquiry({
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        program: formData.program,
-        message: formData.message,
-      });
+      // 1. Post to n8n Webhook
+      await sendContactToN8n(payload);
 
-      setSupabaseStatus("saved");
-      setShowSuccess(true);
+      // 2. Optionally record in Supabase database asynchronously (non-blocking)
+      try {
+        await saveContactInquiry({
+          name: payload.name,
+          email: payload.email,
+          phone: payload.phone,
+          program: payload.subject,
+          message: payload.message,
+        });
+      } catch (dbErr) {
+        console.warn("Supabase record background notice:", dbErr);
+      }
+
+      // Success handling: Clear the form and show success notification
+      setSubmitStatus("success");
       setFormData({
         name: "",
         email: "",
@@ -57,20 +150,22 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
         program: "",
         message: "",
       });
+      setErrors({});
       onClearProgram();
 
-      // Clear success notification after 10 seconds
+      // Auto-hide success message after 12 seconds
       setTimeout(() => {
-        setShowSuccess(false);
-      }, 10000);
+        setSubmitStatus((current) => (current === "success" ? "idle" : current));
+      }, 12000);
     } catch (err: any) {
-      console.error("Failed to save to Supabase:", err);
-      setSupabaseStatus("error");
-      setSupabaseErrorMessage(err?.message || "Failed to sync submission to Supabase.");
+      console.error("Failed to submit to n8n webhook:", err);
+      setSubmitStatus("error");
+      setErrorMessage("Unable to submit your enquiry right now. Please try again or contact us directly.");
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
   return (
     <section 
@@ -205,50 +300,38 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
             <div className="bg-zinc-900/40 backdrop-blur-md border border-zinc-800/80 p-8 sm:p-10 rounded-3xl shadow-xl space-y-6">
               <h3 className="font-display text-xl font-bold text-white tracking-tight">Admissions Request Form</h3>
               
-              {showSuccess && (
-                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-start gap-3.5 animate-fadeIn">
+              {/* Success Notification matching dark/red premium theme */}
+              {submitStatus === "success" && (
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-2xl flex items-start gap-3.5 animate-fadeIn">
                   <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500 mt-0.5" />
                   <div className="space-y-1">
-                    <p className="font-bold text-sm">Inquiry Sent & Synced to Supabase!</p>
-                    <p className="text-xs text-zinc-400">
-                      Thank you for choosing IronPulse. Your details have been securely recorded in the Supabase backend. One of our admissions counselors will reach out to you within the next 2 hours.
+                    <p className="font-bold text-sm">Enquiry Received!</p>
+                    <p className="text-xs text-zinc-300">
+                      Thank you for contacting IronPulse Fitness! Your enquiry has been received. Our team will contact you shortly.
                     </p>
                   </div>
                 </div>
               )}
 
-              {supabaseStatus === "error" && (
-                <div className="p-4 bg-red-500/10 border border-red-500/20 text-rose-400 rounded-2xl flex flex-col gap-2 animate-fadeIn">
-                  <div className="flex items-start gap-3">
-                    <span className="h-5 w-5 shrink-0 text-rose-500 font-bold text-lg leading-none">✗</span>
-                    <div>
-                      <p className="font-bold text-sm">Supabase Storage Error</p>
-                      <p className="text-xs text-zinc-400 mt-0.5">{supabaseErrorMessage}</p>
-                    </div>
-                  </div>
-                  <div className="text-[11px] text-zinc-500 pl-8 space-y-1">
-                    <p>Make sure you have run the table creation script in your Supabase SQL Editor:</p>
-                    <pre className="bg-zinc-950 p-2 rounded-lg font-mono text-[9px] text-zinc-400 overflow-x-auto select-all leading-normal whitespace-pre">
-{`CREATE TABLE contact_inquiries (
-  id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  name TEXT,
-  email TEXT,
-  phone TEXT,
-  program TEXT,
-  message TEXT
-);`}
-                    </pre>
+              {/* Error Notification */}
+              {submitStatus === "error" && (
+                <div className="p-4 bg-red-500/10 border border-red-500/30 text-rose-400 rounded-2xl flex items-start gap-3.5 animate-fadeIn">
+                  <AlertCircle className="h-5 w-5 shrink-0 text-rose-500 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-sm">Submission Error</p>
+                    <p className="text-xs text-zinc-300">
+                      {errorMessage || "Unable to submit your enquiry right now. Please try again or contact us directly."}
+                    </p>
                   </div>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleSubmit} noValidate className="space-y-5">
                 
                 {/* Name */}
                 <div className="space-y-1.5">
                   <label htmlFor="contact-name" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                    Full Name
+                    Full Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="contact-name"
@@ -257,16 +340,24 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
                     value={formData.name}
                     onChange={handleChange}
                     placeholder="e.g. Rahul Kumar"
-                    className="w-full bg-zinc-950/80 border border-zinc-800 rounded-xl px-4 py-3.5 text-white text-sm focus:outline-none focus:border-red-600"
-                    required
+                    disabled={isSubmitting}
+                    className={`w-full bg-zinc-950/80 border rounded-xl px-4 py-3.5 text-white text-sm focus:outline-none transition-colors ${
+                      errors.name ? "border-red-500 focus:border-red-400" : "border-zinc-800 focus:border-red-600"
+                    }`}
                   />
+                  {errors.name && (
+                    <p className="text-xs text-rose-400 flex items-center gap-1 mt-1 font-medium">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      <span>{errors.name}</span>
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Email */}
                   <div className="space-y-1.5">
                     <label htmlFor="contact-email" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                      Email Address
+                      Email Address <span className="text-red-500">*</span>
                     </label>
                     <input
                       id="contact-email"
@@ -275,15 +366,23 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
                       value={formData.email}
                       onChange={handleChange}
                       placeholder="e.g. rahul@example.com"
-                      className="w-full bg-zinc-950/80 border border-zinc-800 rounded-xl px-4 py-3.5 text-white text-sm focus:outline-none focus:border-red-600"
-                      required
+                      disabled={isSubmitting}
+                      className={`w-full bg-zinc-950/80 border rounded-xl px-4 py-3.5 text-white text-sm focus:outline-none transition-colors ${
+                        errors.email ? "border-red-500 focus:border-red-400" : "border-zinc-800 focus:border-red-600"
+                      }`}
                     />
+                    {errors.email && (
+                      <p className="text-xs text-rose-400 flex items-center gap-1 mt-1 font-medium">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{errors.email}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* Phone */}
                   <div className="space-y-1.5">
                     <label htmlFor="contact-phone" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                      Phone Number
+                      Phone Number <span className="text-red-500">*</span>
                     </label>
                     <input
                       id="contact-phone"
@@ -292,26 +391,32 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
                       value={formData.phone}
                       onChange={handleChange}
                       placeholder="e.g. 9876543210"
-                      className="w-full bg-zinc-950/80 border border-zinc-800 rounded-xl px-4 py-3.5 text-white text-sm focus:outline-none focus:border-red-600"
-                      required
-                      pattern="[0-9]{10}"
-                      title="Please enter a valid 10-digit mobile number"
+                      disabled={isSubmitting}
+                      className={`w-full bg-zinc-950/80 border rounded-xl px-4 py-3.5 text-white text-sm focus:outline-none transition-colors ${
+                        errors.phone ? "border-red-500 focus:border-red-400" : "border-zinc-800 focus:border-red-600"
+                      }`}
                     />
+                    {errors.phone && (
+                      <p className="text-xs text-rose-400 flex items-center gap-1 mt-1 font-medium">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{errors.phone}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                {/* Program dropdown */}
+                {/* Program dropdown (Subject) */}
                 <div className="space-y-1.5">
                   <label htmlFor="contact-program" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                    Program of Interest
+                    Subject / Interested Service
                   </label>
                   <select
                     id="contact-program"
                     name="program"
                     value={formData.program}
                     onChange={handleChange}
+                    disabled={isSubmitting}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-zinc-300 text-sm focus:outline-none focus:border-red-600 appearance-none cursor-pointer"
-                    required
                   >
                     <option value="" disabled>Select your goal program</option>
                     <option value="Strength Training">Strength Training</option>
@@ -326,7 +431,7 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
                 {/* Message */}
                 <div className="space-y-1.5">
                   <label htmlFor="contact-message" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                    Tell Us About Your Goals
+                    Message <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     id="contact-message"
@@ -334,22 +439,35 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
                     rows={4}
                     value={formData.message}
                     onChange={handleChange}
-                    placeholder="Describe any weight loss, muscle gain goals, or prior fitness injuries..."
-                    className="w-full bg-zinc-950/80 border border-zinc-800 rounded-xl px-4 py-3.5 text-white text-sm focus:outline-none focus:border-red-600 resize-none"
-                    required
+                    placeholder="Describe your fitness goals, preferred training schedule, or any inquiries..."
+                    disabled={isSubmitting}
+                    className={`w-full bg-zinc-950/80 border rounded-xl px-4 py-3.5 text-white text-sm focus:outline-none transition-colors resize-none ${
+                      errors.message ? "border-red-500 focus:border-red-400" : "border-zinc-800 focus:border-red-600"
+                    }`}
                   ></textarea>
+                  {errors.message && (
+                    <p className="text-xs text-rose-400 flex items-center gap-1 mt-1 font-medium">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      <span>{errors.message}</span>
+                    </p>
+                  )}
                 </div>
 
+                {/* Submit Button */}
                 <button
+                  id="contact-submit-btn"
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-4 bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold text-sm rounded-xl transition-all duration-200 active:scale-98 flex items-center justify-center gap-2 shadow-lg shadow-red-600/10 cursor-pointer"
+                  className="w-full py-4 bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-bold text-sm rounded-xl transition-all duration-200 active:scale-98 flex items-center justify-center gap-2 shadow-lg shadow-red-600/10 cursor-pointer"
                 >
                   {isSubmitting ? (
-                    <div className="h-5 w-5 border-2 border-white/35 border-t-white rounded-full animate-spin" />
+                    <>
+                      <div className="h-4 w-4 border-2 border-white/35 border-t-white rounded-full animate-spin" />
+                      <span>Sending...</span>
+                    </>
                   ) : (
                     <>
-                      <span>Submit Admissions Inquiry</span>
+                      <span>Send Message</span>
                       <Send className="h-4 w-4" />
                     </>
                   )}
