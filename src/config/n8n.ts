@@ -23,26 +23,47 @@ export interface N8nContactPayload {
  * Sends contact enquiry data to the configured n8n webhook.
  */
 export async function sendContactToN8n(payload: N8nContactPayload): Promise<{ success: boolean; data?: any }> {
-  const response = await fetch(N8N_WEBHOOK_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json, text/plain, */*",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(`n8n webhook error (${response.status}): ${errorText || response.statusText}`);
+  // Skip if still using default placeholder domain
+  if (
+    !N8N_WEBHOOK_URL ||
+    N8N_WEBHOOK_URL.includes("your-n8n-domain") ||
+    N8N_WEBHOOK_URL.includes("your-n8n-instance")
+  ) {
+    return { success: true, data: { status: "skipped_placeholder_webhook" } };
   }
 
-  let data;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4000);
+
   try {
-    data = await response.json();
-  } catch {
-    data = { status: "ok" };
-  }
+    const response = await fetch(N8N_WEBHOOK_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/plain, */*",
+      },
+      body: JSON.stringify(payload),
+    });
+    clearTimeout(timeoutId);
 
-  return { success: true, data };
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      console.warn(`n8n webhook response not ok (${response.status}):`, errorText);
+      return { success: false };
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      data = { status: "ok" };
+    }
+
+    return { success: true, data };
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    console.warn("n8n webhook dispatch noticed:", err.message);
+    return { success: false };
+  }
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, ChangeEvent, FormEvent } from "react";
 import { X, CheckCircle, Wallet, ShieldCheck, Ticket, Calendar } from "lucide-react";
 import { MembershipPlan } from "../data";
 import { saveMembership } from "../lib/supabase";
+import { createInquiry } from "../services/inquiryService";
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -123,6 +124,17 @@ export default function CheckoutModal({
       setIsSubmitting(true);
       const trialId = "trial_" + Math.random().toString(36).substring(7);
       setPaymentId(trialId);
+
+      // Record lead in Admin pipeline
+      createInquiry({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone || "Not provided",
+        subject: "3-Day Free VIP Trial",
+        message: "Customer booked a 3-Day Free Trial pass through the website.",
+        source: "Free Trial Booking",
+      }).catch((e) => console.warn("Admin inquiry notice:", e));
+
       performSupabaseSave(trialId).finally(() => {
         setIsSubmitting(false);
         setIsSuccess(true);

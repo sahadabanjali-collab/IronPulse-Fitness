@@ -1,7 +1,8 @@
 import { useState, useEffect, ChangeEvent, FormEvent } from "react";
 import { Phone, Mail, MapPin, Clock, Send, CheckCircle2, AlertCircle } from "lucide-react";
-import { sendContactToN8n } from "../config/n8n";
+import { sendContactToFormspree, FORMSPREE_ENDPOINT } from "../services/formspree";
 import { saveContactInquiry } from "../lib/supabase";
+import { createInquiry } from "../services/inquiryService";
 import { CONTACT_INFO } from "../data";
 
 interface ContactSectionProps {
@@ -42,19 +43,24 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
         if (!value.trim()) return "Full name is required.";
         if (value.trim().length < 2) return "Name must be at least 2 characters long.";
         return "";
-      case "email":
-        if (!value.trim()) return "Email address is required.";
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+      case "email": {
+        const cleanEmail = value.trim().toLowerCase();
+        if (!cleanEmail) return "Email address is required.";
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(cleanEmail)) {
           return "Please enter a valid email address (e.g. name@example.com).";
         }
         return "";
-      case "phone":
-        if (!value.trim()) return "Phone number is required.";
-        const digitsOnly = value.replace(/\D/g, "");
-        if (digitsOnly.length < 10) {
-          return "Please enter a valid 10-digit phone number.";
+      }
+      case "phone": {
+        const cleanPhone = value.trim();
+        if (!cleanPhone) return "Phone number is required.";
+        const digitsOnly = cleanPhone.replace(/\D/g, "");
+        if (digitsOnly.length < 6 || digitsOnly.length > 16) {
+          return "Please enter a valid phone number.";
         }
         return "";
+      }
       case "message":
         if (!value.trim()) return "Message cannot be empty.";
         return "";
@@ -125,20 +131,36 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
     };
 
     try {
-      // 1. Post to n8n Webhook
-      await sendContactToN8n(payload);
-
-      // 2. Optionally record in Supabase database asynchronously (non-blocking)
-      try {
-        await saveContactInquiry({
+      // Send to Formspree endpoint and record in internal storage concurrently
+      const [formspreeResult] = await Promise.all([
+        sendContactToFormspree({
+          name: payload.name,
+          email: payload.email,
+          phone: payload.phone,
+          program: payload.subject,
+          subject: payload.subject,
+          message: payload.message,
+          submittedAt: payload.submittedAt,
+        }),
+        createInquiry({
+          name: payload.name,
+          email: payload.email,
+          phone: payload.phone,
+          subject: payload.subject,
+          message: payload.message,
+          source: "Contact Form (Formspree)",
+        }).catch((e) => console.warn("Local inquiry save error:", e)),
+        saveContactInquiry({
           name: payload.name,
           email: payload.email,
           phone: payload.phone,
           program: payload.subject,
           message: payload.message,
-        });
-      } catch (dbErr) {
-        console.warn("Supabase record background notice:", dbErr);
+        }).catch((e) => console.warn("Supabase inquiry save error:", e)),
+      ]);
+
+      if (!formspreeResult.success) {
+        throw new Error(formspreeResult.error || "Formspree submission failed.");
       }
 
       // Success handling: Clear the form and show success notification
@@ -158,9 +180,11 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
         setSubmitStatus((current) => (current === "success" ? "idle" : current));
       }, 12000);
     } catch (err: any) {
-      console.error("Failed to submit to n8n webhook:", err);
+      console.error("Submission failed:", err);
       setSubmitStatus("error");
-      setErrorMessage("Unable to submit your enquiry right now. Please try again or contact us directly.");
+      setErrorMessage(
+        err?.message || "Unable to submit your enquiry right now. Please try again or contact us directly."
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -326,7 +350,7 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} noValidate className="space-y-5">
+              <form action={FORMSPREE_ENDPOINT} method="POST" onSubmit={handleSubmit} noValidate className="space-y-5">
                 
                 {/* Name */}
                 <div className="space-y-1.5">

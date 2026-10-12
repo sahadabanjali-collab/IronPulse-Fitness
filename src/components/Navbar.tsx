@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { Menu, X, Dumbbell } from "lucide-react";
+import { Menu, X, Dumbbell, ShieldCheck } from "lucide-react";
 
 interface NavbarProps {
   onJoinClick: () => void;
+  onAdminClick?: () => void;
 }
 
 export default function Navbar({ onJoinClick }: NavbarProps) {
@@ -119,12 +120,14 @@ export default function Navbar({ onJoinClick }: NavbarProps) {
               ))}
             </div>
 
-            <button
-              onClick={onJoinClick}
-              className="px-5 py-2.5 bg-red-600 text-white font-semibold text-sm rounded-lg hover:bg-red-500 active:scale-95 transition-all duration-200 shadow-md shadow-red-600/20"
-            >
-              Join Now
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onJoinClick}
+                className="px-5 py-2.5 bg-red-600 text-white font-semibold text-sm rounded-lg hover:bg-red-500 active:scale-95 transition-all duration-200 shadow-md shadow-red-600/20"
+              >
+                Join Now
+              </button>
+            </div>
           </div>
 
           {/* Mobile menu button */}
@@ -164,7 +167,7 @@ export default function Navbar({ onJoinClick }: NavbarProps) {
               {item.label}
             </a>
           ))}
-          <div className="pt-4 px-4">
+          <div className="pt-4 px-4 space-y-2.5">
             <button
               onClick={() => {
                 setIsOpen(false);

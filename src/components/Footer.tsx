@@ -1,7 +1,11 @@
 import { useState, FormEvent } from "react";
 import { Facebook, Instagram, Twitter, Youtube, Linkedin, Dumbbell, Send, Check } from "lucide-react";
 
-export default function Footer() {
+interface FooterProps {
+  onAdminClick?: () => void;
+}
+
+export default function Footer(_props: FooterProps = {}) {
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -241,10 +245,9 @@ export default function Footer() {
         {/* Bottom copyright row */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-600 font-medium">
           <p>&copy; {new Date().getFullYear()} IronPulse Fitness. All Rights Reserved.</p>
-          <div className="flex gap-6">
+          <div className="flex items-center gap-6">
             <a href="#" className="hover:text-zinc-400 transition-colors">Privacy Policy</a>
             <a href="#" className="hover:text-zinc-400 transition-colors">Terms of Service</a>
-            <a href="#" className="hover:text-zinc-400 transition-colors">Refund Guidelines</a>
           </div>
         </div>
 

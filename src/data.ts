@@ -304,7 +304,7 @@ export const CONTACT_INFO = {
   phone: "+91 98765 43210",
   whatsappNumber: "919876543210", // Clean digits for WhatsApp link
   whatsappMessage: "Hi IronPulse Fitness! I would like to enquire about gym memberships and training programs.",
-  email: "info@ironpulse.com",
+  email: "debanjanmondal911@gmail.com",
   address: "12, Outer Ring Rd, Sector 4, HSR Layout, Bengaluru, Karnataka 560102",
   hours: {
     weekdays: "5:00 AM - 11:00 PM",
