@@ -1,5 +1,4 @@
 import { AdminUser, UserRole } from "../types/inquiry";
-import { supabase } from "../lib/supabase";
 
 const CUSTOM_USERS_KEY = "ironpulse_admin_custom_users";
 const AUTH_STORAGE_KEY = "ironpulse_admin_session";
@@ -95,38 +94,7 @@ export async function loginUser(
   const cleanEmail = email.trim().toLowerCase();
   const cleanPassword = password.trim();
 
-  // 1. Check with Supabase Auth first if applicable
-  try {
-    const { data: supaAuthData, error: supaAuthError } = await supabase.auth.signInWithPassword({
-      email: cleanEmail,
-      password: cleanPassword,
-    });
-
-    if (!supaAuthError && supaAuthData.user) {
-      const supaUser: AdminUser = {
-        id: supaAuthData.user.id,
-        name: supaAuthData.user.user_metadata?.name || cleanEmail.split("@")[0],
-        email: cleanEmail,
-        role: "admin",
-        title: "Authenticated Administrator (Supabase)",
-        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
-      };
-
-      const durationMs = rememberMe ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-      const session: AuthSession = {
-        user: supaUser,
-        token: supaAuthData.session?.access_token || `token_${supaUser.id}_${Date.now()}`,
-        expiresAt: Date.now() + durationMs,
-      };
-
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
-      return { success: true, user: supaUser };
-    }
-  } catch (supErr) {
-    console.warn("Supabase auth check notice, falling back to local credentials:", supErr);
-  }
-
-  // 2. Check local/in-app credential store
+  // Check in-app credential store
   const allUsers = getStoredUsers();
   const found = allUsers.find(
     (u) => u.email.toLowerCase() === cleanEmail && u.password === cleanPassword
@@ -168,31 +136,23 @@ export function updateAdminPassword(userId: string, newPassword: string): { succ
 }
 
 export async function logoutUser(): Promise<void> {
-  try {
-    await supabase.auth.signOut();
-  } catch (err) {
-    console.warn("Supabase signOut error:", err);
-  }
   localStorage.removeItem(AUTH_STORAGE_KEY);
 }
 
 // Role permission checks
 export function hasPermission(
-  role: UserRole,
-  action: "delete_inquiry" | "export_csv" | "manage_team" | "update_status" | "add_notes"
+  userRole: UserRole,
+  requiredRole: UserRole
 ): boolean {
-  switch (action) {
-    case "delete_inquiry":
-      return role === "admin";
-    case "manage_team":
-      return role === "admin";
-    case "export_csv":
-      return role === "admin" || role === "manager";
-    case "update_status":
-    case "add_notes":
-      return role === "admin" || role === "manager" || role === "staff";
-    default:
-      return false;
-  }
+  const roleHierarchy: Record<UserRole, number> = {
+    admin: 3,
+    manager: 2,
+    staff: 1,
+  };
+
+  return roleHierarchy[userRole] >= roleHierarchy[requiredRole];
 }
 
+export function getAllAdminUsers(): AdminUser[] {
+  return getStoredUsers().map(({ password: _, ...u }) => u);
+}

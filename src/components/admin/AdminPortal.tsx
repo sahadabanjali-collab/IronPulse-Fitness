@@ -52,7 +52,7 @@ function AdminPortalContent({ onBackToSite }: AdminPortalProps) {
     return (
       <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center p-4 space-y-4">
         <div className="h-10 w-10 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs text-zinc-400 font-medium">Verifying Supabase Administrator authorization...</p>
+        <p className="text-xs text-zinc-400 font-medium">Verifying Administrator authorization...</p>
       </div>
     );
   }

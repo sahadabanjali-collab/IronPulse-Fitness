@@ -43,7 +43,7 @@ export default function AdminLogin({ onBackToSite, onLoginSuccess }: AdminLoginP
       } else if (!res.isAdmin) {
         setError(
           res.error ||
-            "Authentication successful in Supabase, but your account is not registered in the 'admins' table."
+            "Authentication successful, but your account is not registered as an administrator."
         );
       } else {
         if (onLoginSuccess) {
@@ -76,7 +76,7 @@ export default function AdminLogin({ onBackToSite, onLoginSuccess }: AdminLoginP
 
         <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-widest flex items-center gap-1.5 bg-zinc-900/60 border border-zinc-800 px-2.5 py-1 rounded-lg">
           <ShieldCheck className="h-3.5 w-3.5 text-red-500" />
-          <span>Supabase Auth</span>
+          <span>Admin Portal</span>
         </span>
       </div>
 
@@ -92,7 +92,7 @@ export default function AdminLogin({ onBackToSite, onLoginSuccess }: AdminLoginP
             Administrator Sign In
           </h1>
           <p className="text-xs text-zinc-400">
-            Sign in with your credentials created in Supabase Authentication.
+            Sign in with your administrator credentials to access leads, registrations, and club management.
           </p>
         </div>
 
@@ -177,7 +177,7 @@ export default function AdminLogin({ onBackToSite, onLoginSuccess }: AdminLoginP
         <div className="pt-2 border-t border-zinc-800/80 text-center">
           <p className="text-[11px] text-zinc-500 flex items-center justify-center gap-1.5">
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-            <span>Protected route • Supabase RLS Authorization</span>
+            <span>Protected route • IronPulse Secure Administration</span>
           </p>
         </div>
       </div>

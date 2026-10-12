@@ -1,7 +1,6 @@
 import { useState, useEffect, ChangeEvent, FormEvent } from "react";
 import { Phone, Mail, MapPin, Clock, Send, CheckCircle2, AlertCircle } from "lucide-react";
 import { sendContactToFormspree, FORMSPREE_ENDPOINT } from "../services/formspree";
-import { saveContactInquiry } from "../lib/supabase";
 import { createInquiry } from "../services/inquiryService";
 import { CONTACT_INFO } from "../data";
 
@@ -150,13 +149,6 @@ export default function ContactSection({ selectedProgram, onClearProgram }: Cont
           message: payload.message,
           source: "Contact Form (Formspree)",
         }).catch((e) => console.warn("Local inquiry save error:", e)),
-        saveContactInquiry({
-          name: payload.name,
-          email: payload.email,
-          phone: payload.phone,
-          program: payload.subject,
-          message: payload.message,
-        }).catch((e) => console.warn("Supabase inquiry save error:", e)),
       ]);
 
       if (!formspreeResult.success) {

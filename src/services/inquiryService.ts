@@ -1,5 +1,4 @@
 import { Inquiry, InquiryStatus } from "../types/inquiry";
-import { fetchContactInquiries, saveContactInquiry } from "../lib/supabase";
 
 const LOCAL_STORAGE_KEY = "ironpulse_local_inquiries";
 
@@ -35,7 +34,7 @@ function saveLocalInquiries(inquiries: Inquiry[]) {
   }
 }
 
-// 1. Fetch all inquiries (Server + Supabase Cloud Database + Local Fallback)
+// 1. Fetch all inquiries (Server + Local Fallback)
 export async function getInquiries(): Promise<Inquiry[]> {
   const mergedMap = new Map<string, Inquiry>();
 
@@ -61,51 +60,7 @@ export async function getInquiries(): Promise<Inquiry[]> {
     console.warn("Could not fetch inquiries from /api/inquiries:", err);
   }
 
-  // 2. Fetch from Supabase Cloud Database (for submissions from mobile or external networks)
-  try {
-    const supabaseRecords = await fetchContactInquiries();
-    if (Array.isArray(supabaseRecords) && supabaseRecords.length > 0) {
-      for (const record of supabaseRecords) {
-        const id = record.id ? `sup_${record.id}` : `inq_${Date.now()}`;
-        const createdDate = record.created_at ? new Date(record.created_at) : new Date();
-        
-        const mappedInquiry: Inquiry = {
-          id: id,
-          name: record.name || "Anonymous",
-          email: (record.email || "").toLowerCase().trim(),
-          phone: record.phone || "",
-          subject: record.program || "General Fitness Enquiry",
-          message: record.message || "",
-          source: "Contact Form (Cloud)",
-          status: "new",
-          notes: "",
-          createdAt: createdDate.toISOString(),
-          submittedAt: createdDate.toLocaleString("en-US", {
-            dateStyle: "full",
-            timeStyle: "short",
-          }),
-        };
-
-        // Check if we already have this record by exact id or email+phone+message
-        let alreadyExists = false;
-        const recordDedup = getDedupKey(mappedInquiry);
-        for (const existing of mergedMap.values()) {
-          if (getDedupKey(existing) === recordDedup) {
-            alreadyExists = true;
-            break;
-          }
-        }
-
-        if (!alreadyExists) {
-          mergedMap.set(mappedInquiry.id, mappedInquiry);
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("Supabase fetch notice:", err);
-  }
-
-  // 3. Merge with local storage entries
+  // 2. Merge with local storage entries
   const localList = getStoredLocalInquiries();
   for (const localInq of localList) {
     if (!LEGACY_SEED_IDS.has(localInq.id)) {
@@ -195,25 +150,12 @@ export async function createInquiry(payload: {
     console.warn("Server POST /api/inquiries notice:", err);
   }
 
-  // 2. Also persist to Supabase directly
-  try {
-    await saveContactInquiry({
-      name: cleanName,
-      email: cleanEmail,
-      phone: cleanPhone,
-      program: cleanSubject,
-      message: cleanMessage,
-    });
-  } catch (supErr) {
-    console.warn("Supabase direct save notice:", supErr);
-  }
-
-  // 3. Update local storage
+  // 2. Update local storage
   const current = getStoredLocalInquiries();
   const updated = [savedInquiry, ...current.filter((i) => i.id !== savedInquiry.id)];
   saveLocalInquiries(updated);
 
-  // 4. Dispatch custom window event so Admin dashboard immediately updates in real-time
+  // 3. Dispatch custom window event so Admin dashboard immediately updates in real-time
   try {
     window.dispatchEvent(
       new CustomEvent("ironpulse:new_inquiry", {
@@ -295,4 +237,3 @@ export function exportInquiriesToCSV(inquiries: Inquiry[]): void {
   link.click();
   document.body.removeChild(link);
 }
-

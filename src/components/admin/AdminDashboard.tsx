@@ -32,7 +32,7 @@ import {
   deleteInquiry,
   exportInquiriesToCSV,
 } from "../../services/inquiryService";
-import { fetchMemberships } from "../../lib/supabase";
+import { getMemberships } from "../../services/membershipService";
 import { useAuth } from "../../context/AuthContext";
 import AdminSidebar, { AdminTab } from "./AdminSidebar";
 import InquiryDetailModal from "./InquiryDetailModal";
@@ -85,7 +85,7 @@ export default function AdminDashboard({
     try {
       const [inqData, memData] = await Promise.all([
         getInquiries(),
-        fetchMemberships(),
+        getMemberships(),
       ]);
       setInquiries(inqData);
       setMemberships(memData);
@@ -188,13 +188,13 @@ export default function AdminDashboard({
 
           {/* Right Header Badges & Actions */}
           <div className="flex items-center gap-2.5">
-            {/* Supabase Live Status */}
+            {/* Live System Status */}
             <div className="flex items-center gap-2 bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-800 text-xs text-zinc-400">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span className="font-mono text-[11px] hidden sm:inline">Supabase Connected</span>
+              <span className="font-mono text-[11px] hidden sm:inline">System Live</span>
             </div>
 
             {/* Refresh Button */}
@@ -222,7 +222,7 @@ export default function AdminDashboard({
         {showNewLeadBanner && (
           <div className="bg-emerald-600 text-white px-4 py-2.5 text-xs font-bold text-center flex items-center justify-center gap-2 shadow-lg animate-bounce">
             <BellRing className="h-4 w-4" />
-            <span>New Contact Form Submission Received & Synced to Supabase!</span>
+            <span>New Contact Form Submission Received!</span>
           </div>
         )}
 
@@ -242,7 +242,7 @@ export default function AdminDashboard({
                     Welcome back, {adminRecord?.email?.split("@")[0] || user?.email?.split("@")[0] || "Admin"}
                   </h1>
                   <p className="text-xs sm:text-sm text-zinc-400">
-                    Your IronPulse gym management system is actively connected to Supabase PostgreSQL with real-time lead capture and role authorization.
+                    Your IronPulse gym management system is actively running with real-time lead capture, membership bookings, and role authorization.
                   </p>
                 </div>
               </div>
@@ -268,7 +268,7 @@ export default function AdminDashboard({
                     </div>
                   </div>
                   <div className="text-3xl font-black text-white">{memberships.length}</div>
-                  <p className="text-[11px] text-zinc-500">Recorded bookings in Supabase</p>
+                  <p className="text-[11px] text-zinc-500">Recorded club registrations</p>
                 </div>
 
                 <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 space-y-3">
@@ -343,9 +343,9 @@ export default function AdminDashboard({
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl font-black text-white">Bookings & Trial Requests</h1>
+                  <h1 className="text-2xl font-black text-white">Bookings &amp; Trial Requests</h1>
                   <p className="text-xs text-zinc-400">
-                    Recorded member passes, trial bookings, and subscription plans in Supabase.
+                    Recorded member passes, trial bookings, and subscription plans in the database.
                   </p>
                 </div>
               </div>
@@ -354,16 +354,16 @@ export default function AdminDashboard({
                 {isLoadingMemberships ? (
                   <div className="p-16 text-center text-zinc-400 space-y-3">
                     <div className="h-8 w-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto" />
-                    <p className="text-xs">Loading bookings from Supabase...</p>
+                    <p className="text-xs">Loading membership bookings...</p>
                   </div>
                 ) : memberships.length === 0 ? (
                   <div className="p-16 text-center text-zinc-400 space-y-3">
                     <div className="h-12 w-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-zinc-500">
                       <CalendarCheck className="h-6 w-6" />
                     </div>
-                    <p className="text-sm font-semibold text-zinc-200">No bookings recorded in Supabase yet</p>
+                    <p className="text-sm font-semibold text-zinc-200">No bookings recorded yet</p>
                     <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                      When visitors complete the checkout or trial registration on the public website, entries are stored in the <code className="text-zinc-300">memberships</code> table.
+                      When visitors complete checkout or trial registration on the website, verified entries are logged directly in the active memberships database.
                     </p>
                   </div>
                 ) : (
@@ -420,7 +420,7 @@ export default function AdminDashboard({
               <div>
                 <h1 className="text-2xl font-black text-white">Administrator Accounts</h1>
                 <p className="text-xs text-zinc-400">
-                  Users registered in the Supabase <code className="text-red-400">admins</code> table with authorization privileges.
+                  Authorized administrative accounts with management and operations privileges.
                 </p>
               </div>
 
@@ -432,7 +432,7 @@ export default function AdminDashboard({
                     </div>
                     <div>
                       <h3 className="text-base font-bold text-white">Current Authenticated Admin</h3>
-                      <p className="text-xs text-zinc-400">Verified via Supabase Authentication &amp; RLS</p>
+                      <p className="text-xs text-zinc-400">Verified Administrator Session</p>
                     </div>
                   </div>
                   <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-xs font-bold font-mono">
@@ -447,7 +447,7 @@ export default function AdminDashboard({
                   </div>
 
                   <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800/80 space-y-1.5">
-                    <span className="text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">Supabase User ID (auth.users.id)</span>
+                    <span className="text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">Admin User ID</span>
                     <p className="text-zinc-300 font-mono text-xs truncate">{user?.id}</p>
                   </div>
 
@@ -457,8 +457,8 @@ export default function AdminDashboard({
                   </div>
 
                   <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800/80 space-y-1.5">
-                    <span className="text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">Authorization Method</span>
-                    <p className="text-zinc-300 font-mono">admins.user_id = auth.users.id</p>
+                    <span className="text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">Session Status</span>
+                    <p className="text-zinc-300 font-mono">Active Local &amp; Server Session</p>
                   </div>
                 </div>
               </div>
@@ -477,7 +477,7 @@ export default function AdminDashboard({
                     </span>
                   </h1>
                   <p className="text-xs text-zinc-400 mt-1">
-                    Every contact form submission on the website automatically persists to Supabase and displays here.
+                    Every contact form submission on the website automatically persists and displays here in real-time.
                   </p>
                 </div>
 
@@ -727,8 +727,8 @@ export default function AdminDashboard({
           {currentTab === "settings" && (
             <div className="space-y-6">
               <div>
-                <h1 className="text-2xl font-black text-white">System &amp; Database Settings</h1>
-                <p className="text-xs text-zinc-400">Supabase connection status, PostgreSQL tables, and credentials.</p>
+                <h1 className="text-2xl font-black text-white">System &amp; Pipeline Settings</h1>
+                <p className="text-xs text-zinc-400">Live submission pipeline, Formspree API, and local server database.</p>
               </div>
 
               <div className="bg-zinc-900/80 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6">
@@ -737,40 +737,40 @@ export default function AdminDashboard({
                     <Database className="h-6 w-6" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-white">Supabase Cloud Database</h3>
-                    <p className="text-xs text-zinc-400">PostgreSQL Backend Connection</p>
+                    <h3 className="text-base font-bold text-white">Live Form Engine &amp; Storage</h3>
+                    <p className="text-xs text-zinc-400">Formspree Webhook &amp; Local Persistence</p>
                   </div>
                 </div>
 
                 <div className="space-y-4 text-xs">
                   <div>
-                    <label className="block text-zinc-400 font-semibold mb-1">Project Endpoint URL</label>
+                    <label className="block text-zinc-400 font-semibold mb-1">Contact Formspree Endpoint</label>
                     <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl font-mono text-zinc-200">
-                      https://iqvihkdbkzjfzazeozts.supabase.co
+                      https://formspree.io/f/mdeadbro
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-zinc-400 font-semibold mb-1">Publishable Client Key</label>
+                    <label className="block text-zinc-400 font-semibold mb-1">Server Data Storage</label>
                     <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl font-mono text-zinc-400 truncate">
-                      sb_publishable_h9fyBf4t6yYbe_YZBDolmg_1MTza7lU
+                      inquiries_store.json &bull; memberships_store.json (Fast Real-Time Persistence)
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-zinc-400 font-semibold mb-1">Database Tables Active</label>
+                    <label className="block text-zinc-400 font-semibold mb-1">Active Services</label>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 font-mono">
                       <div className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-between">
-                        <span className="text-zinc-200">admins</span>
-                        <span className="text-[10px] text-emerald-400">RLS Active</span>
+                        <span className="text-zinc-200">Formspree</span>
+                        <span className="text-[10px] text-emerald-400">Active</span>
                       </div>
                       <div className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-between">
-                        <span className="text-zinc-200">contact_inquiries</span>
-                        <span className="text-[10px] text-emerald-400">Live Sync</span>
+                        <span className="text-zinc-200">Inquiries API</span>
+                        <span className="text-[10px] text-emerald-400">Ready</span>
                       </div>
                       <div className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-between">
-                        <span className="text-zinc-200">memberships</span>
-                        <span className="text-[10px] text-emerald-400">Live Sync</span>
+                        <span className="text-zinc-200">Memberships API</span>
+                        <span className="text-[10px] text-emerald-400">Ready</span>
                       </div>
                     </div>
                   </div>
